@@ -1,4 +1,3 @@
-//| mill-version: 1.0.4
 package build
 
 import mill.*
@@ -10,13 +9,14 @@ import mill.kotlinlib.*
 import os.RelPath.stringRelPathValidated
 import coursier.params.ResolutionParams
 import coursier.core.VariantSelector.VariantMatcher
+import kotlinlib.ksp.Ksp2Module
 
 object androidSdkModule0 extends AndroidSdkModule {
   def buildToolsVersion = "36.0.0"
   override def cmdlineToolsVersion = "19.0"
 }
 
-object app extends AndroidAppKotlinModule, AndroidR8AppModule, AndroidHiltSupport {
+object app extends AndroidAppKotlinModule, AndroidR8AppModule, Ksp2Module, AndroidHiltSupport {
 
   override def androidApplicationNamespace: String = "com.nicos.pokedex_compose_xr"
   override def androidApplicationId: String = "com.nicos.pokedex_compose_xr"
@@ -53,13 +53,6 @@ object app extends AndroidAppKotlinModule, AndroidR8AppModule, AndroidHiltSuppor
   def compileMvnDeps: T[Seq[Dep]] = Seq(
     mvn"com.android.extensions.xr:extensions-xr:1.0.0"
   )
-
-  private def addJvmVariantAttributes: ResolutionParams => ResolutionParams = { params =>
-    params.addVariantAttributes(
-      "org.jetbrains.kotlin.platform.type" -> VariantMatcher.Equals("jvm"),
-      "org.gradle.jvm.environment" -> VariantMatcher.Equals("standard-jvm")
-    )
-  }
 
   def sdkInstallSystemImage(): Command[String] = Task.Command {
     val image =
@@ -171,22 +164,11 @@ object app extends AndroidAppKotlinModule, AndroidR8AppModule, AndroidHiltSuppor
 
   override def kotlinVersion: T[String] = Versions.kotlinVersion
   override def kspVersion: T[String] = Versions.kspVersion
-  override def kotlinLanguageVersion: T[String] =Versions.kotlinLanguageVersion
-
-  def androidPackageableExtraFiles: T[Seq[AndroidPackageableExtraFile]] = Task {
-      androidTransformAarFiles(resolvedRunMvnDeps)().flatMap {
-        unpackedDep =>
-          unpackedDep.nativeLibs.toList.flatMap(lib => os.list(lib.path))
-      }.map(
-        nativeLibDir =>
-          AndroidPackageableExtraFile(PathRef(nativeLibDir), "lib" / nativeLibDir.last)
-      )
-    }
+  override def kspJvmTarget: T[String] = "21"
 }
 
 object Versions {
   val kotlinVersion = "2.2.0"
-  val kotlinLanguageVersion = "1.9"
 
   val kspVersion = "2.0.2"
   val androidCompileSdk = 36
