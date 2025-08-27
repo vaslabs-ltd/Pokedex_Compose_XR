@@ -7,7 +7,9 @@ import mill.androidlib.*
 import mill.androidlib.hilt.AndroidHiltSupport
 import coursier.{MavenRepository, Repository}
 import mill.kotlinlib.*
- import os.RelPath.stringRelPathValidated
+import os.RelPath.stringRelPathValidated
+import coursier.params.ResolutionParams
+import coursier.core.VariantSelector.VariantMatcher
 
 object androidSdkModule0 extends AndroidSdkModule {
   def buildToolsVersion = "36.0.0"
@@ -43,17 +45,20 @@ object app extends AndroidAppKotlinModule, AndroidR8AppModule, AndroidHiltSuppor
 
   def androidDebugSettings: T[AndroidBuildTypeSettings] = Task.Input {
     AndroidBuildTypeSettings(
-      isMinifyEnabled = false,
-      isShrinkEnabled = false
+      isMinifyEnabled = true,
+      isShrinkEnabled = true
     )
   }
 
-  def compileDeps: T[Seq[Dep]] = Seq(
+  def compileMvnDeps: T[Seq[Dep]] = Seq(
     mvn"com.android.extensions.xr:extensions-xr:1.0.0"
   )
 
-  override def unmanagedClasspath: T[Seq[PathRef]] = Task {
-    super.unmanagedClasspath() ++ defaultResolver().classpath(compileDeps())
+  private def addJvmVariantAttributes: ResolutionParams => ResolutionParams = { params =>
+    params.addVariantAttributes(
+      "org.jetbrains.kotlin.platform.type" -> VariantMatcher.Equals("jvm"),
+      "org.gradle.jvm.environment" -> VariantMatcher.Equals("standard-jvm")
+    )
   }
 
   def sdkInstallSystemImage(): Command[String] = Task.Command {
@@ -169,7 +174,7 @@ object app extends AndroidAppKotlinModule, AndroidR8AppModule, AndroidHiltSuppor
   override def kotlinLanguageVersion: T[String] =Versions.kotlinLanguageVersion
 
   def androidPackageableExtraFiles: T[Seq[AndroidPackageableExtraFile]] = Task {
-      androidTransformAarFiles(resolvedMvnDeps)().flatMap {
+      androidTransformAarFiles(resolvedRunMvnDeps)().flatMap {
         unpackedDep =>
           unpackedDep.nativeLibs.toList.flatMap(lib => os.list(lib.path))
       }.map(
