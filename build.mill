@@ -7,6 +7,7 @@ import mill.androidlib.*
 import mill.androidlib.hilt.AndroidHiltSupport
 import coursier.{MavenRepository, Repository}
 import mill.kotlinlib.*
+ import os.RelPath.stringRelPathValidated
 
 object androidSdkModule0 extends AndroidSdkModule {
   def buildToolsVersion = "36.0.0"
@@ -40,10 +41,10 @@ object app extends AndroidAppKotlinModule, AndroidR8AppModule, AndroidHiltSuppor
 
   def androidIsDebug = true
 
-  def androidDebugSettings: T[AndroidBuildTypeSettings] = Task {
+  def androidDebugSettings: T[AndroidBuildTypeSettings] = Task.Input {
     AndroidBuildTypeSettings(
-      isMinifyEnabled = true,
-      isShrinkEnabled = true
+      isMinifyEnabled = false,
+      isShrinkEnabled = false
     )
   }
 
@@ -55,6 +56,24 @@ object app extends AndroidAppKotlinModule, AndroidR8AppModule, AndroidHiltSuppor
     super.unmanagedClasspath() ++ defaultResolver().classpath(compileDeps())
   }
 
+  def sdkInstallSystemImage(): Command[String] = Task.Command {
+    val image =
+      s"system-images;android-34;google-xr;$androidEmulatorArchitecture"
+    Task.log.info(s"Downloading $image")
+    val installCall = os.call((
+      androidSdkModule().sdkManagerExe().path,
+      "--install",
+      image
+    ))
+
+    if (installCall.exitCode != 0) {
+      Task.log.error(
+        s"Error trying to install android emulator system image ${installCall.err.text()}"
+      )
+      throw new Exception(s"Failed to install system image $image: ${installCall.exitCode}")
+    }
+    image
+  }
   override def androidEnableCompose: T[Boolean] = Task {
     true
   }
@@ -76,6 +95,7 @@ object app extends AndroidAppKotlinModule, AndroidR8AppModule, AndroidHiltSuppor
     // XR
     mvn"androidx.xr.compose:compose:1.0.0-alpha06",
     mvn"androidx.xr.runtime:runtime:1.0.0-alpha05",
+    mvn"androidx.xr.runtime:runtime-openxr:1.0.0-alpha05",
     mvn"androidx.xr.compose.material3:material3:1.0.0-alpha10",
 
   // Compose (version picked from BOM)
@@ -147,6 +167,16 @@ object app extends AndroidAppKotlinModule, AndroidR8AppModule, AndroidHiltSuppor
   override def kotlinVersion: T[String] = Versions.kotlinVersion
   override def kspVersion: T[String] = Versions.kspVersion
   override def kotlinLanguageVersion: T[String] =Versions.kotlinLanguageVersion
+
+  def androidPackageableExtraFiles: T[Seq[AndroidPackageableExtraFile]] = Task {
+      androidTransformAarFiles(resolvedMvnDeps)().flatMap {
+        unpackedDep =>
+          unpackedDep.nativeLibs.toList.flatMap(lib => os.list(lib.path))
+      }.map(
+        nativeLibDir =>
+          AndroidPackageableExtraFile(PathRef(nativeLibDir), "lib" / nativeLibDir.last)
+      )
+    }
 }
 
 object Versions {
